@@ -9,7 +9,7 @@ using namespace std;
 
 bool debugPrint = false;
 
-#define THREAD_COUNT 4
+#define THREAD_COUNT 16
 
 // minimum number of operations per thread
 #define THREAD_OPERATIONS 400000
@@ -35,7 +35,7 @@ struct Acout
     Acout &operator<<(const T &_t)
     {
         object_lock.lock();
-        cout << _t;
+        cout << _t << flush;
         object_lock.unlock();
         return *this;
     }
@@ -43,7 +43,7 @@ struct Acout
     Acout &operator<<(ostream &(*fp)(ostream &))
     {
         object_lock.lock();
-        cout << fp;
+        cout << fp << flush;
         object_lock.unlock();
         return *this;
     }
@@ -240,9 +240,9 @@ int main()
 
     auto end = std::chrono::system_clock::now();
     auto end_time = std::chrono::system_clock::to_time_t(end);
-    std::chrono::duration<double> elapsed_seconds = end-start;
+    auto elapsed_seconds = chrono::duration_cast<chrono::milliseconds>(end - start).count();
     acout << "[MAIN] Sales finish time: " << ctime(&end_time) << "\n";
-    acout << "[MAIN] Sales elapsed time: " << elapsed_seconds.count() << "\n";
+    acout << "[MAIN] Sales elapsed time: " << elapsed_seconds << "ms\n";
 
     still_executing = false;
     stateValidator.join();
@@ -250,9 +250,9 @@ int main()
 
     end = std::chrono::system_clock::now();
     end_time = std::chrono::system_clock::to_time_t(end);
-    elapsed_seconds = end-start;
+    elapsed_seconds = chrono::duration_cast<chrono::milliseconds>(end - start).count();
     acout << "[MAIN] Finish time: " << ctime(&end_time) << "\n";
-    acout << "[MAIN] Total elapsed time: " << elapsed_seconds.count() << "\n";
+    acout << "[MAIN] Total elapsed time: " << elapsed_seconds << "ms\n";
 
     return 0;
 }
