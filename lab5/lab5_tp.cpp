@@ -8,12 +8,76 @@
 #include <functional>
 #include <future>
 #include <random>
+#include <queue>
 
 using namespace std;
 
 #define POLY1_SIZE 500
 #define POLY2_SIZE 1500
 #define THREAD_POOL_SIZE 8
+
+class ThreadPool {
+private:
+    vector<thread> workers;
+    queue<function<void()>> tasks;
+
+    mutex queueMutex;
+    condition_variable condition;
+    bool stop = false;
+    atomic<int> activeTasks{0};
+
+public:
+    ThreadPool(size_t numThreads) {
+        for (size_t i = 0; i < numThreads; ++i) {
+            workers.emplace_back([this] {
+                for (;;) {
+                    std::function<void()> task;
+                    {
+                        std::unique_lock<std::mutex> lock(this->queueMutex);
+                        this->condition.wait(lock, [this] { return this->stop || !this->tasks.empty(); });
+                        if (this->stop && this->tasks.empty()) return;
+                        task = std::move(this->tasks.front());
+                        this->tasks.pop();
+                    }
+                    ++activeTasks;
+                    task();
+                    --activeTasks;
+                }
+            });
+        }
+    }
+
+    ~ThreadPool() {
+        {
+            std::unique_lock<std::mutex> lock(queueMutex);
+            stop = true;
+        }
+        condition.notify_all();
+        for (std::thread& worker : workers) {
+            worker.join();
+        }
+    }
+
+    template<typename F>
+    auto enqueue(F&& f) -> std::future<typename std::result_of<F()>::type> {
+        using return_type = typename std::result_of<F()>::type;
+
+        auto task = std::make_shared<std::packaged_task<return_type()>>(std::forward<F>(f));
+        std::future<return_type> res = task->get_future();
+
+        {
+            std::unique_lock<std::mutex> lock(queueMutex);
+            if (stop) throw std::runtime_error("enqueue on stopped ThreadPool");
+            tasks.emplace([task] { (*task)(); });
+        }
+        condition.notify_one();
+        return res;
+    }
+
+    bool isBusy() {
+        return activeTasks.load() >= workers.size();
+    }
+}tpool(5);
 
 class Polynomial
 {
@@ -165,7 +229,7 @@ Polynomial karatsuba(Polynomial const &p1, Polynomial const &p2)
     vector<int> p1_coef = p1.getCoefficients(), p2_coef = p2.getCoefficients();
     int n = p1_coef.size();
 
-    if (n == 1)
+    if (n < 64)
         return p1 * p2;
 
     int mid = n / 2;
@@ -210,15 +274,12 @@ Polynomial karatsuba(Polynomial const &p1, Polynomial const &p2)
     return result_polynomial;
 }
 
-#define MAX_DEPTH 2
-atomic_int depth = 0;
-
 Polynomial karatsuba_mt(Polynomial const &p1, Polynomial const &p2)
 {
     vector<int> p1_coef = p1.getCoefficients(), p2_coef = p2.getCoefficients();
     int n = p1_coef.size();
 
-    if (n == 1)
+    if (n < 64)
         return p1 * p2;
 
     int mid = n / 2;
@@ -234,24 +295,23 @@ Polynomial karatsuba_mt(Polynomial const &p1, Polynomial const &p2)
     Polynomial z0, z1, z2;
     future<Polynomial> z0f, z1f;
     bool uses_threads = false;
-
-    if(depth < MAX_DEPTH) {
-        uses_threads = true;
-        depth += 2;
-        z0f = async(launch::async|launch::deferred, [&]()
-                 { return karatsuba_mt(low1, low2); });
-        z1f = async(launch::async|launch::deferred, [&]()
-                 { return karatsuba_mt(high1, high2); });
-    }else{
+    
+    // auto z0Future = pool.enqueue([&] { return karatsuba(A_low, B_low, pool); });
+    if (tpool.isBusy()) {
         z0 = karatsuba(low1, low2);
-        z1 = karatsuba(high1, high2);
+        z1 = karatsuba(high1, high2); 
+    } else {
+        uses_threads = true;
+        z0f = tpool.enqueue([&] { return karatsuba_mt(low1, low2); });
+        z1f = tpool.enqueue([&] { return karatsuba_mt(high1, high2); });
     }
-     
-    z2 = karatsuba(low1 + high1, low2 + high2);
 
-    if(uses_threads){
-        z0 = z0f.get(), z1 = z1f.get();
+    z2 = karatsuba(low1 + high1, low2 + high2);
+    if (uses_threads) {
+        z0 = z0f.get();
+        z1 = z1f.get();
     }
+
     Polynomial z4 = (z2 - z1 - z0);
 
     vector<int> result(2 * n - 1, 0);
@@ -315,8 +375,8 @@ int main()
 {
     // Polynomial test1(vector<int>({2, 0, 3, 2, 2, 2, 2, 2,}));
     // Polynomial test2(vector<int>({1, 4}));
-    Polynomial test1 = generatePolynomial(851);
-    Polynomial test2 = generatePolynomial(851);
+    Polynomial test1 = generatePolynomial(9711);
+    Polynomial test2 = generatePolynomial(811);
     // cout << test2.toString() << "\n";
     // cout << test1.toString() << "\n";
     
@@ -334,7 +394,7 @@ int main()
     start = std::chrono::system_clock::now();
     start_time = std::chrono::system_clock::to_time_t(start);
 
-     karatsuba_mult_mt(test1, test2);
+     karatsuba_mult(test1, test2);
     
     end = std::chrono::system_clock::now();
     end_time = std::chrono::system_clock::to_time_t(end);

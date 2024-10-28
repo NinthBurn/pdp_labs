@@ -10,10 +10,10 @@
 
 using namespace std;
 
-#define MATRIX1_ROWS 20
-#define MATRIX1_COLS 30
-#define MATRIX2_ROWS 30
-#define MATRIX2_COLS 30
+#define MATRIX1_ROWS 1024
+#define MATRIX1_COLS 512
+#define MATRIX2_ROWS 512
+#define MATRIX2_COLS 1024
 
 #define TASK_COUNT 8
 #define DEBUG_PRINT false
@@ -104,7 +104,7 @@ private:
     }
 };
 
-int computeElement(int row, int column, vector<vector<int>> matrix1, vector<vector<int>> matrix2) {
+int computeElement(int row, int column, vector<vector<int>> &matrix1, vector<vector<int>> &matrix2) {
     int result = 0;
     int row_size = matrix1[0].size();
 
