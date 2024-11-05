@@ -10,10 +10,10 @@
 
 using namespace std;
 
-#define MATRIX1_ROWS 1024
-#define MATRIX1_COLS 512
-#define MATRIX2_ROWS 512
-#define MATRIX2_COLS 1024
+#define MATRIX1_ROWS 1003
+#define MATRIX1_COLS 1003
+#define MATRIX2_ROWS 1003
+#define MATRIX2_COLS 1003
 
 #define TASK_COUNT 8
 #define DEBUG_PRINT false

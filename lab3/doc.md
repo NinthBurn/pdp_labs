@@ -1,52 +1,70 @@
 ## Benchmark 1
 ### Matrix 1: 9x9
 ### Matrix 2: 9x9
-### Single thread: 1ms
+### Single thread: 0ms
 |             |Row-by-row|Column-by-column|Kth element|Tasks|Pool size|
 |-------------|----------|----------------|-----------|-----|---------|
-|Threads      |3ms       |3ms             |3ms        |4    |         |
-|             |6ms       |5ms             |5ms        |8    |         |
-|             |11ms      |10ms            |10ms       |16   |         |
+|Threads      |2ms       |1ms             |1ms        |4    |         |
+|             |3ms       |3ms             |3ms        |8    |         |
+|             |7ms       |6ms             |6ms        |16   |         |
 |-------------|----------|----------------|-----------|-----|---------|
-|Thread pool  |3ms       |3ms             |3ms        |4    |4        |
+|Thread pool  |1ms       |1ms             |1ms        |4    |4        |
 |             |3ms       |3ms             |3ms        |4    |8        |
-|             |5ms       |5ms             |6ms        |8    |4        |
-|             |6ms       |6ms             |7ms        |8    |8        |
-|             |11ms      |10ms            |14ms       |8    |16       |
-|             |11ms      |12ms            |15ms       |16   |16       |
+|             |1ms       |1ms             |1ms        |8    |4        |
+|             |3ms       |2ms             |2ms        |8    |8        |
+|             | 6ms      | 6ms            | 6ms       |8    |16       |
+|             |7ms       |7ms             |7ms       |16   |16       |
 
 ## Benchmark 2
-### Matrix 1: 20x30
-### Matrix 2: 30x30
-### Single thread: 46ms
+### Matrix 1: 50x60
+### Matrix 2: 60x70
+### Single thread: 1ms
 
 |             |Row-by-row|Column-by-column|Kth element|Tasks|Pool size|
 |-------------|----------|----------------|-----------|-----|---------|
-|Threads      |27ms      |27ms            |27ms       |4    |         |
-|             |32ms      |34ms            |34ms       |8    |         |
-|             |51ms      |53ms            |52ms       |16   |         |
+|Threads      | 3ms      | 1ms            | 1ms       |4    |         |
+|             | 3ms      | 3ms            | 3ms       |8    |         |
+|             | 6ms      | 6ms            | 6ms       |16   |         |
 |-------------|----------|----------------|-----------|-----|---------|
-|Thread pool  |29ms      |29ms            |29ms       |4    |4        |
-|             |29ms      |28ms            |30ms       |4    |8        |
-|             |27ms      |26ms            |34ms       |8    |4        |
-|             |35ms      |42ms            |36ms       |8    |8        |
-|             |40ms      |48ms            |41ms       |8    |16       |
-|             |59ms      |61ms            |62ms       |16   |16       |
+|Thread pool  | 1ms      | 1ms            | 1ms       |4    |4        |
+|             | 1ms      | 1ms            | 3ms       |4    |8        |
+|             | 2ms      | 1ms            | 1ms       |8    |4        |
+|             | 3ms      | 3ms            | 3ms       |8    |8        |
+|             | 3ms      | 3ms            | 3ms       |8    |16       |
+|             | 6ms      | 6ms            | 6ms       |16   |16       |
 
 ## Benchmark 3
-### Matrix 1: 100x100
-### Matrix 2: 100x100
-### Single thread: 17976ms
+### Matrix 1: 256x256
+### Matrix 2: 256x256
+### Single thread: 81ms
 
 |             |Row-by-row|Column-by-column|Kth element|Tasks|Pool size|
 |-------------|----------|----------------|-----------|-----|---------|
-|Threads      |7426ms    |10743ms         |11329ms    |4    |         |
-|             |4194ms    |5823ms          |5884ms     |8    |         |
-|             |5930ms    |6530ms          |6593ms     |16   |         |
+|Threads      |28ms      |26ms            |25ms       |4    |         |
+|             |20ms      |21ms            |20ms       |8    |         |
+|             |20ms      |19ms            |20ms       |16   |         |
 |-------------|----------|----------------|-----------|-----|---------|
-|Thread pool  |10032ms   |10606ms         |8842ms     |4    |4        |
-|             |7900ms    |10721ms         |9729ms     |4    |8        |
-|             |25139ms   |28033ms         |27615ms    |8    |4        |
-|             |6129ms    |6838ms          |6495ms     |8    |8        |
-|             |5513ms    |6112ms          |6158ms     |8    |16       |
-|             |6610ms    |6559ms          |6628ms     |16   |16       |
+|Thread pool  |33ms      |25ms            |30ms       |4    |4        |
+|             |26ms      |26ms            |27ms       |4    |8        |
+|             |26ms      |24ms            |25ms       |8    |4        |
+|             |20ms      |20ms            |21ms       |8    |8        |
+|             |25ms      |27ms            |25ms       |8    |16       |
+|             |18ms      |18ms            |19ms       |16   |16       |
+
+## Benchmark 4
+### Matrix 1: 1024x2048
+### Matrix 2: 2048x1024
+### Single thread: 12286ms
+
+|             |Row-by-row|Column-by-column|Kth element|Tasks|Pool size|
+|-------------|----------|----------------|-----------|-----|---------|
+|Threads      |3135ms    |3119ms          |3603ms     |4    |         |
+|             |1957ms    |1766ms          |2575ms     |8    |         |
+|             |1955ms    |1899ms          |2358ms     |16   |         |
+|-------------|----------|----------------|-----------|-----|---------|
+|Thread pool  |3237ms    |3036ms          |3501ms     |4    |4        |
+|             |3247ms    |3240ms          |3950ms     |4    |8        |
+|             |4261ms    |3220ms          |3720ms     |8    |4        |
+|             |1870ms    |2402ms          |2315ms     |8    |8        |
+|             |1979ms    |2287ms          |2651ms     |8    |16       |
+|             |2009ms    |1982ms          |3260ms     |16   |16       |
