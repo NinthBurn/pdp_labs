@@ -8,12 +8,10 @@ using System.Net.Sockets;
 using System.Text;
 using System.Threading;
 
-class AsyncHttpDownloader
+class EventDrivenHttpDownloader
 {
-	// List to hold ongoing download tasks
-	private List<DownloadTask> downloadTasks = new List<DownloadTask>();
+	private static int downloadCount = 0;
 
-	// Class to track information for each download
 	private class DownloadTask
 	{
 		public string Url { get; set; }
@@ -38,12 +36,9 @@ class AsyncHttpDownloader
 				ResponseStream = new MemoryStream(),
 			};
 
-			// Create a new socket and initiate connection
 			task.Socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 			task.Socket.BeginConnect(task.Host, task.Port, OnConnect, task);
 		}
-
-		//Task.WhenAll(downloadTasks).Wait();
 	}
 
 	private void OnConnect(IAsyncResult ar)
@@ -77,7 +72,6 @@ class AsyncHttpDownloader
 			int bytesSent = task.Socket.EndSend(ar);
 			Console.WriteLine($"Sent {bytesSent} bytes to {task.Host}");
 
-			// Allocate buffer for receiving the response
 			task.ResponseBuffer = new byte[1024];
 			task.Socket.BeginReceive(task.ResponseBuffer, 0, task.ResponseBuffer.Length, SocketFlags.None, OnReceive, task);
 		}
@@ -124,10 +118,6 @@ class AsyncHttpDownloader
 
 		string raw = Encoding.UTF8.GetString(task.ResponseStream.ToArray());
 		ParsedHttpResponse req = Parser.ParseRawResponse(raw);
-
-		// 
-		//Console.WriteLine(req.ContentLength);
-		//Console.WriteLine(req.ResponseBody.Length);
 		
 		File.WriteAllBytes(filename, Encoding.ASCII.GetBytes(req.ResponseBody));
 		Console.WriteLine($"Response saved to {filename}");
@@ -139,12 +129,12 @@ class AsyncHttpDownloader
 		{
 			task.Socket.Close();
 		}
-		downloadTasks.Remove(task);
+		Interlocked.Increment(ref downloadCount);
 	}
 
 	public static void Main(string[] args)
 	{
-		var downloader = new AsyncHttpDownloader();
+		var downloader = new EventDrivenHttpDownloader();
 		var urls = new List<string>
 		{
 			"http://example.com",
@@ -159,7 +149,6 @@ class AsyncHttpDownloader
 		downloader.StartDownloads(urls);
 
 		// Prevent the main thread from exiting while the downloads are running
-		Console.WriteLine("Press any key to exit...");
-		Console.ReadKey();
+		while (downloadCount <  urls.Count) { }
 	}
 }
