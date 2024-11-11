@@ -1,4 +1,6 @@
-﻿using System;
+﻿using HttpParser;
+using Lab4PDP.HttpParser.Response;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
@@ -8,45 +10,67 @@ using System.Threading.Tasks;
 
 namespace Lab4PDP
 {
-	
-
-	class HttpFileDownloader
+	class TaskHttpDownloader
 	{
 		private static readonly Encoding Encoding = Encoding.ASCII;
 
-		public static Task<byte[]> DownloadFileAsync(string url)
+		public Task<byte[]> DownloadFileAsync(DownloadTask task)
 		{
-			Uri uri = new Uri(url);
-			string host = uri.Host;
-			int port = 80;
-			string path = uri.AbsolutePath;
-
-			return Task.Run(() => DownloadFileInternal(host, port, path));
+			return Task.Run(() => DownloadFile(task));
 		}
 
-		private static byte[] DownloadFileInternal(string host, int port, string path)
+		private byte[] DownloadFile(DownloadTask task)
 		{
-			using (Socket socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp))
-			{
-				Connect(socket, host, port).Wait();
-				SendHttpRequest(socket, host, path).Wait();
-				return ReceiveHttpResponse(socket).Result;
-			}
+			Connect(task).Wait();
+			SendHttpRequest(task).Wait();
+			return ReceiveHttpResponse(task).Result;
 		}
 
-		private static Task Connect(Socket socket, string host, int port)
+		private Task Connect(DownloadTask task)
 		{
 			var tcs = new TaskCompletionSource<object>();
 
-			socket.BeginConnect(host, port, ar =>
+			task.Socket.BeginConnect(task.Host, task.Port, ar =>
 			{
 				try
 				{
-					socket.EndConnect(ar);
+					task.Socket.EndConnect(ar);
 					tcs.SetResult(null);
 				}
 				catch (Exception ex)
 				{
+					Console.WriteLine($"Error during connection: {ex.Message}");
+					Cleanup(task);
+					tcs.SetException(ex);
+				}
+			}, task);
+
+			return tcs.Task;
+		}
+
+		private Task SendHttpRequest(DownloadTask task)
+		{
+			string request = $"GET {new Uri(task.Url).AbsolutePath} HTTP/1.1\r\n" +
+							 $"Host: {task.Host}\r\n" +
+							 "Connection: close\r\n" +
+							 "\r\n";
+
+			task.RequestBuffer = Encoding.GetBytes(request);
+			var tcs = new TaskCompletionSource<object>();
+
+			task.Socket.BeginSend(task.RequestBuffer, 0, task.RequestBuffer.Length, SocketFlags.None, ar =>
+			{
+				try
+				{
+					int bytesSent = task.Socket.EndSend(ar);
+					Console.WriteLine($"Sent {bytesSent} bytes to {task.Host}");
+
+					tcs.SetResult(null);
+				}
+				catch (Exception ex)
+				{
+					Console.WriteLine($"Error during sending: {ex.Message}");
+					Cleanup(task);
 					tcs.SetException(ex);
 				}
 			}, null);
@@ -54,107 +78,89 @@ namespace Lab4PDP
 			return tcs.Task;
 		}
 
-		private static Task SendHttpRequest(Socket socket, string host, string path)
-		{
-			string request = $"GET {path} HTTP/1.1\r\n" +
-							 $"Host: {host}\r\n" +
-							 "Connection: close\r\n\r\n";
-
-			byte[] requestBytes = Encoding.GetBytes(request);
-			var tcs = new TaskCompletionSource<object>();
-
-			socket.BeginSend(requestBytes, 0, requestBytes.Length, SocketFlags.None, ar =>
-			{
-				try
-				{
-					socket.EndSend(ar);
-					tcs.SetResult(null);
-				}
-				catch (Exception ex)
-				{
-					tcs.SetException(ex);
-				}
-			}, null);
-
-			return tcs.Task;
-		}
-
-		private static Task<byte[]> ReceiveHttpResponse(Socket socket)
+		private Task<byte[]> ReceiveHttpResponse(DownloadTask task)
 		{
 			var tcs = new TaskCompletionSource<byte[]>();
-			var responseBytes = new List<byte>();
+			task.ResponseBuffer = new byte[1024];
 
-			ReceiveNextChunk(socket, responseBytes, tcs);
+			ReceiveNextChunk(task, tcs);
 
 			return tcs.Task;
 		}
 
-		private static void ReceiveNextChunk(Socket socket, List<byte> responseBytes, TaskCompletionSource<byte[]> tcs)
+		private void ReceiveNextChunk(DownloadTask task, TaskCompletionSource<byte[]> tcs)
 		{
-			byte[] buffer = new byte[1024];
-
-			socket.BeginReceive(buffer, 0, buffer.Length, SocketFlags.None, ar =>
+			task.Socket.BeginReceive(task.ResponseBuffer, 0, task.ResponseBuffer.Length, SocketFlags.None, ar =>
 			{
 				try
 				{
-					int bytesRead = socket.EndReceive(ar);
+					int bytesRead = task.Socket.EndReceive(ar);
 
 					if (bytesRead > 0)
 					{
-						responseBytes.AddRange(new ArraySegment<byte>(buffer, 0, bytesRead));
+						task.ResponseStream.Write(task.ResponseBuffer, 0, bytesRead);
+						task.TotalBytesReceived += bytesRead;
 
-						ReceiveNextChunk(socket, responseBytes, tcs);
+						ReceiveNextChunk(task, tcs);
 					}
 					else
 					{
-						tcs.SetResult(responseBytes.ToArray());
+						Console.WriteLine($"Download complete for {task.Url}. Total bytes received: {task.TotalBytesReceived}");
+						Cleanup(task);
+						tcs.SetResult(task.ResponseStream.ToArray());
 					}
 				}
 				catch (Exception ex)
 				{
+					Console.WriteLine($"Error during receiving: {ex.Message}");
+					Cleanup(task);
 					tcs.SetException(ex);
 				}
 			}, null);
 		}
 
-		public static Task DownloadMultipleFilesAsync(List<string> urls, string downloadFolder)
+		public Task DownloadMultipleFilesAsync(List<string> urls)
 		{
 			var downloadTasks = new List<Task>();
 
 			foreach (string url in urls)
 			{
-				string fileName = Path.Combine(downloadFolder, Path.GetFileName(new Uri(url).AbsolutePath));
-				downloadTasks.Add(DownloadAndSaveFileAsync(url, fileName));
+				var task = new DownloadTask
+				{
+					Url = url,
+					Host = new Uri(url).Host,
+					Port = 80,
+					ResponseStream = new MemoryStream(),
+				};
+
+				task.Socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
+
+				downloadTasks.Add(DownloadAndSaveFileAsync(task));
 			}
 
 			return Task.WhenAll(downloadTasks);
 		}
 
-		private static Task DownloadAndSaveFileAsync(string url, string savePath)
+		private Task DownloadAndSaveFileAsync(DownloadTask task)
 		{
 			return Task.Run(async () =>
 			{
-				byte[] fileData = await DownloadFileAsync(url);
-				File.WriteAllBytes(savePath, fileData);
-				Console.WriteLine($"Downloaded {url} to {savePath}");
+				Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "tasks"));
+				string raw = Encoding.GetString(DownloadFileAsync(task).Result);
+				string filename = Path.Combine("tasks", task.Host + ".html");
+
+				ParsedHttpResponse req = Parser.ParseRawResponse(raw.ToString());
+
+				File.WriteAllBytes(filename, Encoding.GetBytes(req.ResponseBody));
+				Console.WriteLine($"Response saved to {filename}");
 			});
 		}
-
-		static void Main(string[] args)
+		private void Cleanup(DownloadTask task)
 		{
-			var urls = new List<string>
+			if (task.Socket != null)
 			{
-				"http://example.com/file1.txt",
-				"http://example.com/file2.txt",
-				"http://example.com/file3.txt"
-			};
-
-			string downloadFolder = Path.Combine(Environment.CurrentDirectory, "downloads");
-			Directory.CreateDirectory(downloadFolder);
-
-			DownloadMultipleFilesAsync(urls, downloadFolder).Wait();
-
-			Console.WriteLine("All downloads completed!");
+				task.Socket.Close();
+			}
 		}
 	}
 }

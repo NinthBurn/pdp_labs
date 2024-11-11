@@ -18,8 +18,11 @@ namespace Lab4PDP.HttpParser.Response
 			StatusLine = new StatusLine(lines);
 			HttpHeaders responseHeaders = new HttpHeaders(lines);
 			Headers = responseHeaders.Headers;
-			ContentLength = int.Parse(responseHeaders.Headers["Content-Length"]);
-			
+
+			ContentLength = 0;
+			if(responseHeaders.Headers.ContainsKey("Content-Length"))
+				ContentLength = int.Parse(responseHeaders.Headers["Content-Length"]);
+					
 			StringBuilder sb = new StringBuilder("");
 
 			for(int i = responseHeaders.LastIndex + 2; i < lines.Length; i++)

@@ -1,4 +1,5 @@
 ﻿using HttpParser;
+using Lab4PDP;
 using Lab4PDP.HttpParser.Response;
 using System;
 using System.Collections.Generic;
@@ -11,18 +12,6 @@ using System.Threading;
 class EventDrivenHttpDownloader
 {
 	private static int downloadCount = 0;
-
-	private class DownloadTask
-	{
-		public string Url { get; set; }
-		public Socket Socket { get; set; }
-		public string Host { get; set; }
-		public int Port { get; set; }
-		public byte[] RequestBuffer { get; set; }
-		public byte[] ResponseBuffer { get; set; }
-		public MemoryStream ResponseStream { get; set; }
-		public int TotalBytesReceived { get; set; }
-	}
 
 	public void StartDownloads(List<string> urls)
 	{
@@ -39,6 +28,9 @@ class EventDrivenHttpDownloader
 			task.Socket = new Socket(AddressFamily.InterNetwork, SocketType.Stream, ProtocolType.Tcp);
 			task.Socket.BeginConnect(task.Host, task.Port, OnConnect, task);
 		}
+
+		// Prevent the main thread from exiting while the downloads are running
+		while (downloadCount < urls.Count) { }
 	}
 
 	private void OnConnect(IAsyncResult ar)
@@ -99,7 +91,6 @@ class EventDrivenHttpDownloader
 			}
 			else
 			{
-				// Finished receiving data, print the result
 				Console.WriteLine($"Download complete for {task.Url}. Total bytes received: {task.TotalBytesReceived}");
 				SaveResponseToFile(task);
 				Cleanup(task);
@@ -114,7 +105,8 @@ class EventDrivenHttpDownloader
 
 	private void SaveResponseToFile(DownloadTask task)
 	{
-		string filename = task.Host + ".html";
+		Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "event_driven"));
+		string filename = Path.Combine("event_driven", task.Host + ".html"); 
 
 		string raw = Encoding.UTF8.GetString(task.ResponseStream.ToArray());
 		ParsedHttpResponse req = Parser.ParseRawResponse(raw);
@@ -130,25 +122,5 @@ class EventDrivenHttpDownloader
 			task.Socket.Close();
 		}
 		Interlocked.Increment(ref downloadCount);
-	}
-
-	public static void Main(string[] args)
-	{
-		var downloader = new EventDrivenHttpDownloader();
-		var urls = new List<string>
-		{
-			"http://example.com",
-			"http://example.org",
-			"http://example.net",
-			"http://google.com",
-			"http://youtube.com",
-			"http://wikipedia.com",
-			"http://httpforever.com/",
-		};
-
-		downloader.StartDownloads(urls);
-
-		// Prevent the main thread from exiting while the downloads are running
-		while (downloadCount <  urls.Count) { }
 	}
 }
