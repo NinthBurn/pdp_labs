@@ -13,6 +13,7 @@ namespace Lab4PDP
 	class TaskAsyncHttpDownloader
 	{
 		private static readonly Encoding Encoding = Encoding.ASCII;
+		private static readonly int chunkSize = 1024;
 
 		public async Task<byte[]> DownloadFileAsync(DownloadTask task)
 		{
@@ -77,7 +78,7 @@ namespace Lab4PDP
 		private Task<byte[]> ReceiveHttpResponseAsync(DownloadTask task)
 		{
 			var tcs = new TaskCompletionSource<byte[]>();
-			task.ResponseBuffer = new byte[1024];
+			task.ResponseBuffer = new byte[chunkSize];
 
 			ReceiveNextChunk(task, tcs);
 

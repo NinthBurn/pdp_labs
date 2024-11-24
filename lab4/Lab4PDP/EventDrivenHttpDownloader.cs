@@ -11,10 +11,12 @@ using System.Threading;
 
 class EventDrivenHttpDownloader
 {
-	private static int downloadCount = 0;
+	private CountdownEvent downloadCountdown;
 
 	public void StartDownloads(List<string> urls)
 	{
+		downloadCountdown = new CountdownEvent(urls.Count);
+
 		foreach (var url in urls)
 		{
 			var task = new DownloadTask
@@ -29,8 +31,8 @@ class EventDrivenHttpDownloader
 			task.Socket.BeginConnect(task.Host, task.Port, OnConnect, task);
 		}
 
+		downloadCountdown.Wait();
 		// Prevent the main thread from exiting while the downloads are running
-		while (downloadCount < urls.Count) { }
 	}
 
 	private void OnConnect(IAsyncResult ar)
@@ -121,6 +123,6 @@ class EventDrivenHttpDownloader
 		{
 			task.Socket.Close();
 		}
-		Interlocked.Increment(ref downloadCount);
+		downloadCountdown.Signal();
 	}
 }

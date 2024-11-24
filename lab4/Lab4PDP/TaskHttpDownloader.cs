@@ -19,12 +19,14 @@ namespace Lab4PDP
 			return Task.Run(() => DownloadFile(task));
 		}
 
-		private byte[] DownloadFile(DownloadTask task)
+		private Task<byte[]> DownloadFile(DownloadTask task)
 		{
-			Connect(task).Wait();
-			SendHttpRequest(task).Wait();
-			return ReceiveHttpResponse(task).Result;
+			return Connect(task)
+				.ContinueWith(t => SendHttpRequest(task))
+				.ContinueWith(t => ReceiveHttpResponse(task))
+				.Unwrap(); 
 		}
+
 
 		private Task Connect(DownloadTask task)
 		{
@@ -143,18 +145,21 @@ namespace Lab4PDP
 
 		private Task DownloadAndSaveFileAsync(DownloadTask task)
 		{
-			return Task.Run(async () =>
-			{
-				Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "tasks"));
-				string raw = Encoding.GetString(DownloadFileAsync(task).Result);
-				string filename = Path.Combine("tasks", task.Host + ".html");
+			Directory.CreateDirectory(Path.Combine(Directory.GetCurrentDirectory(), "tasks"));
+			string filename = Path.Combine("tasks", task.Host + ".html");
+			return DownloadFile(task)
+					.ContinueWith(t =>
+					{
+						string raw = Encoding.GetString(t.Result);
+						string filename = Path.Combine("tasks", task.Host + ".html");
 
-				ParsedHttpResponse req = Parser.ParseRawResponse(raw.ToString());
+						ParsedHttpResponse req = Parser.ParseRawResponse(raw);
 
-				File.WriteAllBytes(filename, Encoding.GetBytes(req.ResponseBody));
-				Console.WriteLine($"Response saved to {filename}");
-			});
+						File.WriteAllBytes(filename, Encoding.GetBytes(req.ResponseBody));
+						Console.WriteLine($"Response saved to {filename}");
+					});
 		}
+
 		private void Cleanup(DownloadTask task)
 		{
 			if (task.Socket != null)

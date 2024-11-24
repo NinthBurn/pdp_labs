@@ -19,7 +19,10 @@ namespace Lab4PDP
 				"http://httpforever.com/",
 				"http://httpbin.org/",
 				"http://old.reddit.com/",
+				"http://peak.com/",
+				"http://www.scientology.org/",
 				"http://www.slackware.com/",
+				"http://http.badssl.com",
 			};
 
 			downloader.StartDownloads(urls);
