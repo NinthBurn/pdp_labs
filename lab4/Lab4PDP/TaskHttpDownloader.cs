@@ -22,11 +22,10 @@ namespace Lab4PDP
 		private Task<byte[]> DownloadFile(DownloadTask task)
 		{
 			return Connect(task)
-				.ContinueWith(t => SendHttpRequest(task))
+				.ContinueWith(t => SendHttpRequest(task)).Unwrap()
 				.ContinueWith(t => ReceiveHttpResponse(task))
 				.Unwrap(); 
 		}
-
 
 		private Task Connect(DownloadTask task)
 		{

@@ -32,7 +32,6 @@ class EventDrivenHttpDownloader
 		}
 
 		downloadCountdown.Wait();
-		// Prevent the main thread from exiting while the downloads are running
 	}
 
 	private void OnConnect(IAsyncResult ar)
