@@ -10,11 +10,12 @@
 #include <random>
 #include <queue>
 #include <span>
+#include <chrono>
 
 using namespace std;
 
-#define POLY1_SIZE 1000
-#define POLY2_SIZE 1000
+#define POLY1_SIZE 20000
+#define POLY2_SIZE 20000
 #define THREAD_POOL_SIZE 16
 
 class ThreadPool {
@@ -82,8 +83,8 @@ public:
 
 class Timer{
 private:
-    chrono::_V2::system_clock::time_point start;
-    chrono::_V2::system_clock::time_point end;
+    chrono::system_clock::time_point start;
+    chrono::system_clock::time_point end;
 
 public:
     Timer() {}
