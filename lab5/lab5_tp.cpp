@@ -375,8 +375,8 @@ int main()
 {
     // Polynomial test1(vector<int>({2, 0, 3, 2, 2, 2, 2, 2,}));
     // Polynomial test2(vector<int>({1, 4}));
-    Polynomial test1 = generatePolynomial(9711);
-    Polynomial test2 = generatePolynomial(811);
+    Polynomial test1 = generatePolynomial(10000);
+    Polynomial test2 = generatePolynomial(10000);
     // cout << test2.toString() << "\n";
     // cout << test1.toString() << "\n";
     

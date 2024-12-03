@@ -13,8 +13,8 @@
 
 using namespace std;
 
-#define POLY1_SIZE 1000
-#define POLY2_SIZE 1000
+#define POLY1_SIZE 10000
+#define POLY2_SIZE 10000
 #define THREAD_POOL_SIZE 16
 
 class ThreadPool {
@@ -32,12 +32,12 @@ public:
         for (size_t i = 0; i < numThreads; ++i) {
             workers.emplace_back([this] {
                 for (;;) {
-                    std::function<void()> task;
+                    function<void()> task;
                     {
-                        std::unique_lock<std::mutex> lock(this->queueMutex);
+                        unique_lock<mutex> lock(this->queueMutex);
                         this->condition.wait(lock, [this] { return this->stop || !this->tasks.empty(); });
                         if (this->stop && this->tasks.empty()) return;
-                        task = std::move(this->tasks.front());
+                        task = move(this->tasks.front());
                         this->tasks.pop();
                     }
                     ++activeTasks;
@@ -50,25 +50,25 @@ public:
 
     ~ThreadPool() {
         {
-            std::unique_lock<std::mutex> lock(queueMutex);
+            unique_lock<mutex> lock(queueMutex);
             stop = true;
         }
         condition.notify_all();
-        for (std::thread& worker : workers) {
+        for (thread& worker : workers) {
             worker.join();
         }
     }
 
     template<typename F>
-    auto enqueue(F&& f) -> std::future<typename std::result_of<F()>::type> {
-        using return_type = typename std::result_of<F()>::type;
+    auto enqueue(F&& f) -> future<typename result_of<F()>::type> {
+        using return_type = typename result_of<F()>::type;
 
-        auto task = std::make_shared<std::packaged_task<return_type()>>(std::forward<F>(f));
-        std::future<return_type> res = task->get_future();
+        auto task = make_shared<packaged_task<return_type()>>(forward<F>(f));
+        future<return_type> res = task->get_future();
 
         {
-            std::unique_lock<std::mutex> lock(queueMutex);
-            if (stop) throw std::runtime_error("enqueue on stopped ThreadPool");
+            unique_lock<mutex> lock(queueMutex);
+            if (stop) throw runtime_error("enqueue on stopped ThreadPool");
             tasks.emplace([task] { (*task)(); });
         }
         condition.notify_one();
@@ -80,24 +80,6 @@ public:
     }
 }tpool(THREAD_POOL_SIZE);
 
-class Timer{
-private:
-    chrono::_V2::system_clock::time_point start;
-    chrono::_V2::system_clock::time_point end;
-
-public:
-    Timer() {}
-
-    void startTimer() {
-        start = chrono::system_clock::now();
-    }
-
-    int64_t endTimer() {
-        end = chrono::system_clock::now();
-        return chrono::duration_cast<chrono::milliseconds>(end - start).count();
-    }
-};
-
 class Polynomial
 {
 private:
@@ -107,6 +89,7 @@ public:
     vector<int> coefficients;
 
     Polynomial() {}
+    Polynomial(int degree) : coefficients(vector<int>(degree + 1, 0)) {}
     Polynomial(vector<int> coefficients) : degree(coefficients.size() - 1), coefficients(coefficients) {};
 
     int getDegree() const { return this->degree; }
@@ -246,123 +229,157 @@ public:
     ~Polynomial() {}
 };
 
-Polynomial karatsuba(Polynomial &p1, Polynomial &p2)
+vector<int> karatsuba(span<int> A, span<int> B)
 {
-    int n = p1.coefficients.size();
+    int n = A.size();
 
-    if (n < 65)
-        return p1 * p2;
+    if (n < 65) {
+        vector<int> result(n * 2 - 1, 0);
+        for (int i = 0; i < A.size(); ++i) {
+            for (int j = 0; j < B.size(); ++j) {
+                result[i + j] += A[i] * B[j];
+            }
+        }
+        return result;
+    }
 
     int mid = n / 2;
 
-    vector<int> A0(p1.coefficients.begin(), p1.coefficients.begin() + mid);
-    vector<int> A1(p1.coefficients.begin() + mid, p1.coefficients.end());
-    vector<int> B0(p2.coefficients.begin(), p2.coefficients.begin() + mid);
-    vector<int> B1(p2.coefficients.begin() + mid, p2.coefficients.end());
+    span<int> A0(A.begin(), A.begin() + mid);
+    span<int> A1(A.begin() + mid, A.end());
+    span<int> B0(B.begin(), B.begin() + mid);
+    span<int> B1(B.begin() + mid, B.end());
 
-    Polynomial high1(A1), high2(B1),
-        low1(A0), low2(B0);
+    vector<int> A0A1(max(A0.size(), A1.size()), 0);
+    vector<int> B0B1(max(B0.size(), B1.size()), 0);
 
-    Polynomial l1h1 = low1 + high1;
-    Polynomial l2h2 = low2 + high2;
-    
-    Polynomial z0 = karatsuba(low1, low2);
-    Polynomial z1 = karatsuba(high1, high2);
-    Polynomial z2 = karatsuba(l1h1, l2h2);
+    for (int i = 0; i < A0.size(); ++i) {
+        A0A1[i] += A0[i];
+    }
+    for (int i = 0; i < A1.size(); ++i) {
+        A0A1[i] += A1[i];
+    }
 
-    Polynomial z4 = (z2 - z1 - z0);
+    for (int i = 0; i < B0.size(); ++i) {
+        B0B1[i] += B0[i];
+    }
+    for (int i = 0; i < B1.size(); ++i) {
+        B0B1[i] += B1[i];
+    }
+
+    vector<int> z0 = karatsuba(A0, B0);
+    vector<int> z1 = karatsuba(A1, B1);
+    vector<int> z2 = karatsuba(A0A1, B0B1);
+
+    // Combine results (z2 - z1 - z0)
+    vector<int> z4 = z2;
+    for (int i = 0; i < z1.size(); ++i) {
+        z4[i] -= z1[i];
+    }
+    for (int i = 0; i < z0.size(); ++i) {
+        z4[i] -= z0[i];
+    }
 
     vector<int> result(2 * n - 1, 0);
 
-    // Z0 contributes to the lower half
-    for (int i = 0; i < z0.coefficients.size(); ++i) {
-        result[i] += z0.coefficients[i];
+    for (int i = 0; i < z0.size(); ++i) {
+        result[i] += z0[i];
     }
 
-    // Middle part contributes to the middle of the result
-    for (int i = 0; i < z4.coefficients.size(); ++i) {
-        result[i + mid] += z4.coefficients[i];
+    for (int i = 0; i < z4.size(); ++i) {
+        result[i + mid] += z4[i]; 
     }
 
-    // Z1 contributes to the upper half
-    for (int i = 0; i < z1.coefficients.size(); ++i) {
-        result[i + 2 * mid] += z1.coefficients[i];
+    for (int i = 0; i < z1.size(); ++i) {
+        result[i + 2 * mid] += z1[i];  
     }
 
-    Polynomial result_polynomial = Polynomial(result);
-    result_polynomial.setDegree(p1.getDegree() + p2.getDegree());
-    return result_polynomial;
+    return result;
 }
 
-Polynomial karatsuba_mt(Polynomial &p1, Polynomial &p2)
+vector<int> karatsuba_mt(span<int> A, span<int> B)
 {
-    int n = p1.coefficients.size();
+    int n = A.size();
 
-    if (n < 65)
-        return p1 * p2;
+    if (n < 65) {
+        vector<int> result(n * 2 - 1, 0);
+        for (int i = 0; i < A.size(); ++i) {
+            for (int j = 0; j < B.size(); ++j) {
+                result[i + j] += A[i] * B[j];
+            }
+        }
+        return result;
+    }
 
     int mid = n / 2;
 
-    vector<int> A0(p1.coefficients.begin(), p1.coefficients.begin() + mid);
-    vector<int> A1(p1.coefficients.begin() + mid, p1.coefficients.end());
-    vector<int> B0(p2.coefficients.begin(), p2.coefficients.begin() + mid);
-    vector<int> B1(p2.coefficients.begin() + mid, p2.coefficients.end());
+    span<int> A0(A.begin(), A.begin() + mid);
+    span<int> A1(A.begin() + mid, A.end());
+    span<int> B0(B.begin(), B.begin() + mid);
+    span<int> B1(B.begin() + mid, B.end());
 
-    Polynomial high1(A1), high2(B1),
-        low1(A0), low2(B0);
+    vector<int> A0A1(max(A0.size(), A1.size()), 0);
+    vector<int> B0B1(max(B0.size(), B1.size()), 0);
 
-    Polynomial z0, z1, z2;
-    future<Polynomial> z0f, z1f;
-    bool z0_uses_threads = false, z1_uses_threads = false;
-    
-    // auto z0Future = pool.enqueue([&] { return karatsuba(A_low, B_low, pool); });
-    if (tpool.isBusy()) {
-        z0 = karatsuba(low1, low2);
-    } else {
-        z0_uses_threads = true;
-        z0f = tpool.enqueue([&] { return karatsuba_mt(low1, low2); });
+    for (int i = 0; i < A0.size(); ++i) {
+        A0A1[i] += A0[i];
+    }
+    for (int i = 0; i < A1.size(); ++i) {
+        A0A1[i] += A1[i];
     }
 
-    if (tpool.isBusy()) {
-        z1 = karatsuba(high1, high2); 
-    } else {
-        z1_uses_threads = true;
-        z1f = tpool.enqueue([&] { return karatsuba_mt(high1, high2); });
+    for (int i = 0; i < B0.size(); ++i) {
+        B0B1[i] += B0[i];
+    }
+    for (int i = 0; i < B1.size(); ++i) {
+        B0B1[i] += B1[i];
     }
 
-    Polynomial l1h1 = low1 + high1;
-    Polynomial l2h2 = low2 + high2;
+    vector<int> z0, z1;
+
+    future<vector<int>> z0f, z1f;
+    bool uses_threads = false;
     
-    z2 = karatsuba_mt(l1h1, l2h2);
+    if (tpool.isBusy()) {
+        z0 = karatsuba(A0, B0);
+        z1 = karatsuba(A1, B1);
+    } else {
+        uses_threads = true;
+        z0f = tpool.enqueue([&] { return karatsuba_mt(A0, B0); });
+        z1f = tpool.enqueue([&] { return karatsuba_mt(A1, B1); });
+    }
+
+    vector<int> z2 = karatsuba(A0A1, B0B1);
     
-    if (z0_uses_threads) {
+    if (uses_threads) {
         z0 = z0f.get();
-    }
-
-    if (z1_uses_threads) {
         z1 = z1f.get();
     }
 
-    Polynomial z4 = (z2 - z1 - z0);
+    // Combine results (z2 - z1 - z0)
+    vector<int> z4 = z2;
+    for (int i = 0; i < z1.size(); ++i) {
+        z4[i] -= z1[i];
+    }
+    for (int i = 0; i < z0.size(); ++i) {
+        z4[i] -= z0[i];
+    }
 
     vector<int> result(2 * n - 1, 0);
 
-    for (int i = 0; i < z0.coefficients.size(); ++i) {
-        result[i] += z0.coefficients[i];
+    for (int i = 0; i < z0.size(); ++i) {
+        result[i] += z0[i];
     }
 
-    for (int i = 0; i < z4.coefficients.size(); ++i) {
-        result[i + mid] += z4.coefficients[i];
+    for (int i = 0; i < z4.size(); ++i) {
+        result[i + mid] += z4[i]; 
     }
 
-    for (int i = 0; i < z1.coefficients.size(); ++i) {
-        result[i + 2 * mid] += z1.coefficients[i];
+    for (int i = 0; i < z1.size(); ++i) {
+        result[i + 2 * mid] += z1[i];  
     }
 
-    Polynomial result_polynomial = Polynomial(result);
-    result_polynomial.setDegree(p1.getDegree() + p2.getDegree());
-
-    return result_polynomial;
+    return result;
 }
 
 Polynomial karatsuba_mult(Polynomial &p1, Polynomial &p2) {
@@ -372,7 +389,9 @@ Polynomial karatsuba_mult(Polynomial &p1, Polynomial &p2) {
 
     p1.padToSize(x + 1);
     p2.padToSize(x + 1);
-    return karatsuba(p1, p2);
+    Polynomial res = Polynomial(karatsuba(span<int>(p1.coefficients), span<int>(p2.coefficients)));
+    res.setDegree(res.getDegree() - 2);
+    return res;
 }
 
 Polynomial karatsuba_mult_mt(Polynomial &p1, Polynomial &p2) {
@@ -381,7 +400,7 @@ Polynomial karatsuba_mult_mt(Polynomial &p1, Polynomial &p2) {
 
     p1.padToSize(x + 1);
     p2.padToSize(x + 1);
-    return karatsuba_mt(p1, p2);
+    return Polynomial(karatsuba_mt(span<int>(p1.coefficients), span<int>(p2.coefficients)));
 }
 
 bool segmentMultiplication(Polynomial &p1, Polynomial &p2, vector<int> &result_coefficients, int min_pos, int max_pos) { 
@@ -427,20 +446,30 @@ int main()
     try{
         Polynomial test1 = Polynomial::generatePolynomial(POLY1_SIZE);
         Polynomial test2 = Polynomial::generatePolynomial(POLY2_SIZE);
+
+        auto start = chrono::system_clock::now();
+        auto start_time = chrono::system_clock::to_time_t(start);
+
+        Polynomial correct_result = (test1 * test2);
         Polynomial result;
 
-        Timer timer;
-        timer.startTimer();
-        Polynomial correct_result = (test1 * test2);
-        auto elapsed_seconds = timer.endTimer();
+        auto end = chrono::system_clock::now();
+        auto end_time = chrono::system_clock::to_time_t(end);
+        auto elapsed_seconds = chrono::duration_cast<chrono::milliseconds>(end - start).count();
 
         cout << "Single-threaded polynomial multiplication\n";
         cout << "Elapsed time: " << elapsed_seconds << "ms\n";
 
-        
-        timer.startTimer();
+
+
+        start = chrono::system_clock::now();
+        start_time = chrono::system_clock::to_time_t(start);
+
         result = polynomialMultiplicationMT(test1, test2);
-        elapsed_seconds = timer.endTimer();
+        
+        end = chrono::system_clock::now();
+        end_time = chrono::system_clock::to_time_t(end);
+        elapsed_seconds = chrono::duration_cast<chrono::milliseconds>(end - start).count();
 
         cout << "Multi-threaded O(n^2) polynomial multiplication\n";
         cout << "Elapsed time: " << elapsed_seconds << "ms\n";
@@ -449,20 +478,31 @@ int main()
             throw "Incorrect multiplication - polynomial multiplication multi";
 
 
-        timer.startTimer();
+
+        start = chrono::system_clock::now();
+        start_time = chrono::system_clock::to_time_t(start);
+
         result = karatsuba_mult(test1, test2);
-        elapsed_seconds = timer.endTimer();
+        
+        end = chrono::system_clock::now();
+        end_time = chrono::system_clock::to_time_t(end);
+        elapsed_seconds = chrono::duration_cast<chrono::milliseconds>(end - start).count();
 
         cout << "Single-threaded Karatsuba polynomial multiplication\n";
         cout << "Elapsed time: " << elapsed_seconds << "ms\n";
         
+        // cout << correct_result.toString() << "\n" << result.toString() << "\n";
         if(result != correct_result)
             throw "Incorrect multiplication - Karatsuba single";
 
+        start = chrono::system_clock::now();
+        start_time = chrono::system_clock::to_time_t(start);
 
-        timer.startTimer();
         result = karatsuba_mult_mt(test1, test2);
-        elapsed_seconds = timer.endTimer();
+        
+        end = chrono::system_clock::now();
+        end_time = chrono::system_clock::to_time_t(end);
+        elapsed_seconds = chrono::duration_cast<chrono::milliseconds>(end - start).count();
 
         cout << "Multi-threaded Karatsuba polynomial multiplication\n";
         cout << "Elapsed time: " << elapsed_seconds << "ms\n";
