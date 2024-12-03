@@ -82,6 +82,8 @@ public:
     }
 
     void waitForThreads() {
+        this_thread::sleep_for(chrono::milliseconds(10));
+
         while(!isEmpty())
             this_thread::sleep_for(chrono::milliseconds(100));
     }
@@ -133,9 +135,8 @@ public:
             if(path[i] == vertex)
                 return false;
         }
-            
 
-        return (pos < verticesCount);
+        return true;
     }
 
     void printSolution(vector<int>& path, int startVertex) {
@@ -196,8 +197,6 @@ public:
 
         int lastVertex = path[pos - 1];
 
-        // for(int neighbor = 0; neighbor < verticesCount; ++neighbor) {
-        //     if (isSafe(neighbor, path, pos) && adjacencyMatrix[path[pos - 1]][neighbor]) {
         for (auto neighbor : adjacencyList[lastVertex]) {
             if (isSafe(neighbor, path, pos)) {
                 path[pos] = neighbor;
@@ -219,7 +218,7 @@ public:
                     return;
                 found = true;
 
-                printSolution(ref(path), startVertex);
+                printSolution(path, startVertex);
             }
 
             return;
@@ -227,95 +226,39 @@ public:
 
         int skipFirst = 0;
 
-        // search for all neighbors except the first one using the thread pool
+        // search for all neighbors except the first one using the thread pool or the current thread
         for (auto neighbor : adjacencyList[lastVertex]) {
             if (skipFirst++ > 0 && isSafe(neighbor, path, pos)) {
                 if (found) return;
 
                 path[pos] = neighbor;
 
-                // if(!tpool.isBusy()){
+                if(!tpool.isBusy()){
                     tpool.enqueue([this, &found, path, startVertex, pos] {
                         hamiltonianUtil(startVertex, path, pos + 1, found, false);
                         }
                     );
-                // } else {
-                    // hamiltonianUtilST(startVertex, path, pos + 1, found);
-                    // if (found) return;
-                // }
-                
-                path[pos] = -1;
+                } else {
+                    hamiltonianUtilST(startVertex, path, pos + 1, found);
+                }
             }
         }
 
-        // this thread will check if there exists a cycle continuing from the first neighbor
-        if(!adjacencyList[lastVertex].empty()) { 
+        // first neighbor will always be executed by the thread pool
+        if(!adjacencyList[lastVertex].empty()) {
             path[pos] = adjacencyList[lastVertex][0];
-            int neighbor = path[pos];
 
-            if(isSafe(neighbor, path, pos))
-                hamiltonianUtilST(startVertex, path, pos + 1, found);
+            if(isSafe(path[pos], path, pos))
+                tpool.enqueue([this, &found, path, startVertex, pos] {
+                        hamiltonianUtil(startVertex, path, pos + 1, found, false);
+                        }
+                    );
         }
-            
-        if(isStarterThread)
+
+        if(isStarterThread) {
+            this_thread::sleep_for(chrono::milliseconds(100));
             tpool.waitForThreads();
-    }
-
-    void hamiltonianUtilAsync(int startVertex, vector<int> path, int pos, atomic<bool>& found, bool isStarterThread) {
-        if (found) return;
-        int lastVertex = path[pos - 1];
-
-        if (pos == verticesCount) {
-            if (adjacencyMatrix[lastVertex][startVertex] && !found) {
-                if(!verifySolution(path))
-                    return;
-                found = true;
-
-                printSolution(ref(path), startVertex);
-            }
-
-            return;
         }
-
-        int skipFirst = 0;
-
-        // search for all neighbors except the first one using the thread pool
-        for (auto neighbor : adjacencyList[lastVertex]) {
-            if (skipFirst++ > 0 && isSafe(neighbor, path, pos)) {
-                if (found) return;
-
-                path[pos] = neighbor;
-
-                // if(!tpool.isBusy()){
-                std::future<void> future = std::async(std::launch::async, [this, &found, path, startVertex, pos]() {
-                    hamiltonianUtil(startVertex, path, pos + 1, found, false);
-                });
-                // auto a1 = async(Graph::hamiltonianUtilAsync, *this, startVertex, path, pos + 1, found, false);
-
-                    // tpool.enqueue([this, &found, path, startVertex, pos] {
-                    //     hamiltonianUtil(startVertex, path, pos + 1, found, false);
-                    //     }
-                    // );
-                // } else {
-                    // hamiltonianUtilST(startVertex, path, pos + 1, found);
-                    // if (found) return;
-                // }
-                
-                path[pos] = -1;
-            }
-        }
-
-        // this thread will check if there exists a cycle continuing from the first neighbor
-        if(!adjacencyList[lastVertex].empty()) { 
-            path[pos] = adjacencyList[lastVertex][0];
-            int neighbor = path[pos];
-
-            if(isSafe(neighbor, path, pos))
-                hamiltonianUtilST(startVertex, path, pos + 1, found);
-        }
-            
-        if(isStarterThread)
-            tpool.waitForThreads();
     }
 
     void findHamiltonianCycle(int startVertex) {
@@ -324,7 +267,8 @@ public:
         vector<int> path(verticesCount, -1);
         path[0] = startVertex;
 
-        hamiltonianUtilAsync(startVertex, path, 1, found, true);
+        hamiltonianUtil(startVertex, path, 1, found, true);
+        tpool.waitForThreads();
 
         if (!found) {
             cout << "No Hamiltonian Cycle found." << endl;
@@ -364,7 +308,7 @@ public:
 };
 
 int main() {
-    Graph g = Graph::generateHamiltonianCycle(50, 2, 1);
+    Graph g = Graph::generateHamiltonianCycle(44, 2, 1);
 
     cout << "generated\n";
     int startVertex = 0;
