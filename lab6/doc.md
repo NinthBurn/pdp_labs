@@ -1,38 +1,33 @@
 ## Algorithm
 Detecting a Hamiltonian cycle: Perform DFS until we have a path containing all the nodes only once, after which we check to see if the last node has a path to the first one.
-For the multithreaded version, we add a new task to the thread pool for each recursive call, except for the first neighbor of a node, which is done sequentially.
+For the multithreaded version, we add a search from a neighbor to the thread pool if it is not full, or process that neighbor sequentially, except for the first neighbor of a node, for which the search is always performed on the current thread.
 
 ## Benchmark 1
 ### Input: a graph with 100 000 nodes, having edges from node i to node i+1 (first neighbor is always the correct one)
-#### Singlethreaded : 52770ms
-#### Multithreaded : 52476ms
+#### Singlethreaded : 49400ms ~ 49s
+#### Multithreaded : 49431ms ~ 49s
 
 ## Benchmark 2
 ### Input: a graph with 10 nodes, having edges from node i to node i+1; each node has 3 neighbors: the first 2 neighbors will most likely not be the correct choice for a Hamiltonian cycle, while the last neighbor is always correct
-#### Singlethreaded : 8ms
-#### Multithreaded : 0ms
+#### Singlethreaded : 0ms
+#### Multithreaded : 128ms
 
 ## Benchmark 3
 ### Input: a graph with 60 nodes, having edges from node i to node i+1; each node has 2 neighbors: the first will most likely not be the correct choice for a Hamiltonian cycle, while the last neighbor is always correct
-#### Singlethreaded : 4189ms
-#### Multithreaded : 127ms
+#### Singlethreaded : 2495ms
+#### Multithreaded : 140ms
 
 ## Benchmark 4
 ### Input: a graph with 64 nodes, having edges from node i to node i+1; each node has 2 neighbors: the first will most likely not be the correct choice for a Hamiltonian cycle, while the last neighbor is always correct
-#### Singlethreaded : 58283ms
-#### Multithreaded : 12ms
+#### Singlethreaded : 18969ms ~ 19s
+#### Multithreaded : 138ms
 
 ## Benchmark 5
-### Input: a graph with 64 nodes, having edges from node i to node i+1; each node has 2 neighbors: the first will most likely not be the correct choice for a Hamiltonian cycle, while the last neighbor is always correct
-#### Singlethreaded : 256892ms
-#### Multithreaded : 14ms
+### Input: a graph with 10000 nodes, having edges from node i to node i+1; every 500th node has 3 neighbors: the first 2 neighbors will most likely not be the correct choice for a Hamiltonian cycle, while the last neighbor is always correct
+#### Singlethreaded : 13577ms ~ 14s
+#### Multithreaded : 104224ms ~ 1m42s
 
 ## Benchmark 6
-### Input: a graph with 10000 nodes, having edges from node i to node i+1; every 500th node has 3 neighbors: the first 2 neighbors will most likely not be the correct choice for a Hamiltonian cycle, while the last neighbor is always correct
-#### Singlethreaded : 49202ms ~ 50s
-#### Multithreaded : 175339ms ~ 3m
-
-## Benchmark 7
 ### Input: a graph with 50 nodes, having edges from node i to node i+1; each node has 3 neighbors: the first 2 neighbors will most likely not be the correct choice for a Hamiltonian cycle, while the last neighbor is always correct
-#### Singlethreaded : 915400ms ~ 15m 
+#### Singlethreaded : 544587ms ~ 9m45s
 #### Multithreaded : 8403ms ~ 8s

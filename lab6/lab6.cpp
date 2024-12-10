@@ -13,7 +13,7 @@ using namespace std;
 
 #define THREAD_POOL_SIZE 16
 #define VERIFY_SOLUTION true
-#define PRINT_SOLUTION false
+#define PRINT_SOLUTION true
 
 class ThreadPool {
 private:
@@ -208,7 +208,7 @@ public:
         }
     }
 
-    void hamiltonianUtil(int startVertex, vector<int> path, int pos, atomic<bool>& found, bool isStarterThread) {
+    void hamiltonianUtil(int startVertex, vector<int>& path, int pos, atomic<bool>& found, bool isStarterThread) {
         if (found) return;
         int lastVertex = path[pos - 1];
 
@@ -234,30 +234,22 @@ public:
                 path[pos] = neighbor;
 
                 if(!tpool.isBusy()){
-                    tpool.enqueue([this, &found, path, startVertex, pos] {
-                        hamiltonianUtil(startVertex, path, pos + 1, found, false);
-                        }
-                    );
+                    tpool.enqueue([this, &found, path, startVertex, pos]
+                        {
+                        vector<int> copyPath = path;
+                        hamiltonianUtil(startVertex, copyPath, pos + 1, found, false); });
                 } else {
-                    hamiltonianUtilST(startVertex, path, pos + 1, found);
+                    hamiltonianUtil(startVertex, path, pos + 1, found, false);
                 }
             }
         }
 
-        // first neighbor will always be executed by the thread pool
+        // first neighbor will always call the function that uses the thread pool in the current thread
         if(!adjacencyList[lastVertex].empty()) {
             path[pos] = adjacencyList[lastVertex][0];
 
             if(isSafe(path[pos], path, pos))
-                tpool.enqueue([this, &found, path, startVertex, pos] {
-                        hamiltonianUtil(startVertex, path, pos + 1, found, false);
-                        }
-                    );
-        }
-
-        if(isStarterThread) {
-            this_thread::sleep_for(chrono::milliseconds(100));
-            tpool.waitForThreads();
+                hamiltonianUtil(startVertex, path, pos + 1, found, false);
         }
     }
 
@@ -308,7 +300,7 @@ public:
 };
 
 int main() {
-    Graph g = Graph::generateHamiltonianCycle(44, 2, 1);
+    Graph g = Graph::generateHamiltonianCycle(50, 1, 1);
 
     cout << "generated\n";
     int startVertex = 0;
