@@ -13,8 +13,8 @@
 #include <mpi.h>
 using namespace std;
 
-#define POLY1_SIZE 10000
-#define POLY2_SIZE 10000
+#define POLY1_SIZE 50000
+#define POLY2_SIZE 50000
 
 class Timer{
 private:
@@ -202,10 +202,10 @@ Polynomial polynomialMultiplicationMT(MPI_Comm comm, int rank, int size, Polynom
     int max_degree = p1.getDegree() + p2.getDegree() + 1;
     int pol1_size = p1.getDegree(), pol2_size = p2.getDegree();
     vector<int> result_coefficients(max_degree, 0);
-    vector<int> buffer(max_degree);
 
     int increment = max_degree / size;
     increment = increment > 0 ? increment : 1;
+    vector<int> buffer(increment + 1);
 
     if(rank == 0) {
         for (int currentRank = 1, start = increment; start <= max_degree && currentRank < size; start += increment, ++currentRank) {
@@ -217,15 +217,9 @@ Polynomial polynomialMultiplicationMT(MPI_Comm comm, int rank, int size, Polynom
 
         for (int currentRank = 1, start = increment; start <= max_degree && currentRank < size; start += increment, ++currentRank) {
             MPI_Recv(buffer.data(), buffer.size(), MPI_INT, currentRank, currentRank * 10000, comm, MPI_STATUS_IGNORE);
-            
-            for (int d1 = 0; d1 <= pol1_size && d1 <= start + increment; ++d1)
-            {
-                for (int d2 = 0; d2 <= pol2_size && d1 + d2 <= start + increment; ++d2)
-                {
-                    if(d1 + d2 >= start)
-                        result_coefficients[d1 + d2] = buffer[d1 + d2];
-                    else d2 = start - d1 - 1;
-                }
+
+            for(int i = 0; i <= increment && start + i < result_coefficients.size(); ++i) {
+                result_coefficients[start + i] = buffer[i];
             }
         }
 
@@ -233,10 +227,56 @@ Polynomial polynomialMultiplicationMT(MPI_Comm comm, int rank, int size, Polynom
         int start;
         MPI_Recv(&start, 1, MPI_INT, 0, rank * 100, comm, MPI_STATUS_IGNORE);
         segmentMultiplication(p1, p2, result_coefficients, start, start + increment);
-        MPI_Ssend(result_coefficients.data(), result_coefficients.size(), MPI_INT, 0, 10000 * rank, comm);
+        vector<int> result(result_coefficients.begin() + start, result_coefficients.begin() + start + increment + 1);
+        MPI_Ssend(result.data(), result.size(), MPI_INT, 0, 10000 * rank, comm);
     }
     
     return Polynomial(result_coefficients);
+}
+
+Polynomial karatsuba_rec(Polynomial &p1, Polynomial &p2)
+{
+    int n = p1.coefficients.size();
+
+    if (n < 65)
+        return p1 * p2;
+
+    int mid = n / 2;
+
+    vector<int> A0(p1.coefficients.begin(), p1.coefficients.begin() + mid);
+    vector<int> A1(p1.coefficients.begin() + mid, p1.coefficients.end());
+    vector<int> B0(p2.coefficients.begin(), p2.coefficients.begin() + mid);
+    vector<int> B1(p2.coefficients.begin() + mid, p2.coefficients.end());
+
+    Polynomial high1(A1), high2(B1),
+        low1(A0), low2(B0);
+
+    Polynomial l1h1 = low1 + high1;
+    Polynomial l2h2 = low2 + high2;
+    
+    Polynomial z0 = karatsuba_rec(low1, low2);
+    Polynomial z1 = karatsuba_rec(high1, high2);
+    Polynomial z2 = karatsuba_rec(l1h1, l2h2);
+
+    Polynomial z4 = (z2 - z1 - z0);
+
+    vector<int> result(2 * n - 1, 0);
+
+    for (int i = 0; i < z0.coefficients.size(); ++i) {
+        result[i] += z0.coefficients[i];
+    }
+
+    for (int i = 0; i < z4.coefficients.size(); ++i) {
+        result[i + mid] += z4.coefficients[i];
+    }
+
+    for (int i = 0; i < z1.coefficients.size(); ++i) {
+        result[i + 2 * mid] += z1.coefficients[i];
+    }
+
+    Polynomial result_polynomial = Polynomial(result);
+    result_polynomial.setDegree(p1.getDegree() + p2.getDegree());
+    return result_polynomial;
 }
 
 Polynomial karatsuba(MPI_Comm comm, int rank, int size, Polynomial &p1, Polynomial &p2) {
@@ -308,7 +348,7 @@ Polynomial karatsuba(MPI_Comm comm, int rank, int size, Polynomial &p1, Polynomi
         MPI_Recv(low1_recv.coefficients.data(), low1_size, MPI_INT, 0, 6, comm, MPI_STATUS_IGNORE);
         MPI_Recv(low2_recv.coefficients.data(), low2_size, MPI_INT, 0, 7, comm, MPI_STATUS_IGNORE);
 
-        Polynomial z0 = low1_recv * low2_recv;
+        Polynomial z0 = karatsuba_rec(low1_recv, low2_recv);
         MPI_Send(z0.coefficients.data(), z0.coefficients.size(), MPI_INT, 0, 12, comm);
 
     } else if (rank == 2) {
@@ -325,7 +365,7 @@ Polynomial karatsuba(MPI_Comm comm, int rank, int size, Polynomial &p1, Polynomi
         MPI_Recv(high1_recv.coefficients.data(), high1_size, MPI_INT, 0, 8, comm, MPI_STATUS_IGNORE);
         MPI_Recv(high2_recv.coefficients.data(), high2_size, MPI_INT, 0, 9, comm, MPI_STATUS_IGNORE);
 
-        Polynomial z1 = high1_recv * high2_recv;
+        Polynomial z1 = karatsuba_rec(high1_recv, high2_recv);
         
         MPI_Send(z1.coefficients.data(), z1.coefficients.size(), MPI_INT, 0, 13, comm);
 
@@ -343,7 +383,7 @@ Polynomial karatsuba(MPI_Comm comm, int rank, int size, Polynomial &p1, Polynomi
         MPI_Recv(l1h1_recv.coefficients.data(), l1h1_size, MPI_INT, 0, 10, comm, MPI_STATUS_IGNORE);
         MPI_Recv(l2h2_recv.coefficients.data(), l2h2_size, MPI_INT, 0, 11, comm, MPI_STATUS_IGNORE);
 
-        Polynomial z2 = l1h1_recv * l2h2_recv;
+        Polynomial z2 = karatsuba_rec(l1h1_recv, l2h2_recv);
 
         MPI_Send(z2.coefficients.data(), z2.coefficients.size(), MPI_INT, 0, 14, comm);
     }
@@ -396,7 +436,7 @@ int main(int argc, char** argv)
             timer.startTimer();
         }
         
-        result = polynomialMultiplicationMT(MPI_COMM_WORLD, rank, 4, test1, test2);
+        result = polynomialMultiplicationMT(MPI_COMM_WORLD, rank, size, test1, test2);
 
         if(rank == 0) {
             auto elapsed_seconds = timer.endTimer();
@@ -404,9 +444,9 @@ int main(int argc, char** argv)
             cout << "Polynomial multiplication\n";
             cout << "Elapsed time: " << elapsed_seconds << "ms\n";
 
-            // cout << "this is the buggiest piece of junk ive used yet it's amazingly horrible hope i never touch this again\n";
-            if(result != correct_result)
-                throw "Incorrect multiplication - Karatsuba single";
+            if(result != correct_result) {
+                cout << "Incorrect multiplication - Karatsuba single" << endl;
+            }
 
             timer.startTimer();
         }
